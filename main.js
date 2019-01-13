@@ -47,4 +47,12 @@ function init(arrayBuffer, canvas) {
       console.log(`toggle capitols: ${(performance.now() - start_).toFixed(1)} ms`);
     }
   });
+
+  setTimeout(() => {
+    alert(`Controls:
+      a = toggle antialiasing
+      c = recolor
+      t = toggle tile capitols
+      click = re-randomize`);
+  }, 0);
 }
