@@ -30,16 +30,21 @@ function init(arrayBuffer, canvas) {
     console.log(`rerender: ${(performance.now() - start_).toFixed(1)} ms`);
   });
 
-  document.addEventListener('keydown', e => {
-    if (e.keyCode === 65 /* 'a' */) {
+  document.addEventListener('keydown', ({keyCode}) => {
+    if (keyCode === 65 /* 'a' */) {
       const start_ = performance.now();
       voronoi.toggleAA();
       console.log(`toggle AA: ${(performance.now() - start_).toFixed(1)} ms`);
     }
-    if (e.keyCode === 67 /* 'c' */) {
+    if (keyCode === 67 /* 'c' */) {
       const start_ = performance.now();
       voronoi.recolor();
       console.log(`recolor: ${(performance.now() - start_).toFixed(1)} ms`);
+    }
+    if (keyCode === 84 /* 't' */) {
+      const start_ = performance.now();
+      voronoi.toggleCapitols();
+      console.log(`toggle capitols: ${(performance.now() - start_).toFixed(1)} ms`);
     }
   });
 }
