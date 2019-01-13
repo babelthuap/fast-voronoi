@@ -5,18 +5,20 @@ import {extractUrlParams} from './js/util.js';
 // TIMING
 let start = performance.now();
 
-const canvas = new Canvas();
 const urlParams = extractUrlParams();
 const getNumTiles = () => {
   return parseInt(urlParams['n']) ||
       Math.round(window.innerWidth * window.innerHeight / 3000);
 };
 
-fetch('./lattice/sorted')
-    .then(response => response.arrayBuffer())
-    .then(init);
+Promise.all([
+  fetch('./lattice/sorted'),
+  Promise.resolve(new Canvas()),
+]).then(([response, canvas]) => {
+  response.arrayBuffer().then(arrayBuffer => init(arrayBuffer, canvas));
+});
 
-function init(arrayBuffer) {
+function init(arrayBuffer, canvas) {
   const sortedLattice = new Int8Array(arrayBuffer);
   const numTiles = getNumTiles();
   const voronoi = new FastVoronoi({canvas, numTiles, sortedLattice});
