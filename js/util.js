@@ -6,6 +6,10 @@ export function extractUrlParams() {
   }, {});
 }
 
+export function pair(x, y) {
+  return (x << 15) | y;
+}
+
 export function rand(n) {
   return Math.floor(Math.random() * n);
 }

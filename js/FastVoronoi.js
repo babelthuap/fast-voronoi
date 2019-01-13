@@ -1,4 +1,4 @@
-import {extractUrlParams, rand} from './util.js';
+import {extractUrlParams, pair, rand} from './util.js';
 
 let antialias = false;
 
@@ -48,24 +48,15 @@ export default class FastVoronoi {
 
 function placeCapitols({width, height, numTiles}) {
   const tiles = new Array(numTiles);
-  const capitols = {};
+  const capitols = new Set();
   for (let i = 0; i < numTiles; i++) {
     let x = rand(width);
     let y = rand(height);
-    ////////////////////////////
-    // ensure unique capitols //
-    if (!capitols[x]) {
-      capitols[x] = {};
-    }
-    while (capitols[x][y]) {
+    while (capitols.has(pair(x, y))) {
       x = rand(width);
       y = rand(height);
-      if (!capitols[x]) {
-        capitols[x] = {};
-      }
     }
-    capitols[x][y] = true;
-    ////////////////////////////
+    capitols.add(pair(x, y));
     const color = new Uint8ClampedArray([rand(256), rand(256), rand(256)]);
     tiles[i] = {x, y, color};
   }
