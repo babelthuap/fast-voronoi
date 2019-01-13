@@ -25,7 +25,20 @@ function init(arrayBuffer) {
 
   canvas.addEventListener('mousedown', ({layerX, layerY}) => {
     start = performance.now();
-    voronoi.rerender(getNumTiles());
+    voronoi.randomize(getNumTiles());
     console.log(`rerender: ${(performance.now() - start).toFixed(1)} ms`);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.keyCode === 65 /* 'a' */) {
+      start = performance.now();
+      voronoi.toggleAA();
+      console.log(`toggle AA: ${(performance.now() - start).toFixed(1)} ms`);
+    }
+    if (e.keyCode === 67 /* 'c' */) {
+      start = performance.now();
+      voronoi.recolor();
+      console.log(`recolor: ${(performance.now() - start).toFixed(1)} ms`);
+    }
   });
 }
