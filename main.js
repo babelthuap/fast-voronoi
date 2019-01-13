@@ -2,8 +2,7 @@ import Canvas from './js/Canvas.js';
 import FastVoronoi from './js/FastVoronoi.js';
 import {extractUrlParams} from './js/util.js';
 
-// TIMING
-let start = performance.now();
+const start = performance.now();
 
 const urlParams = extractUrlParams();
 const getNumTiles = () => {
@@ -26,21 +25,21 @@ function init(arrayBuffer, canvas) {
   console.log(`initial render: ${(performance.now() - start).toFixed(1)} ms`);
 
   canvas.addEventListener('mousedown', ({layerX, layerY}) => {
-    start = performance.now();
+    const start_ = performance.now();
     voronoi.randomize(getNumTiles());
-    console.log(`rerender: ${(performance.now() - start).toFixed(1)} ms`);
+    console.log(`rerender: ${(performance.now() - start_).toFixed(1)} ms`);
   });
 
   document.addEventListener('keydown', e => {
     if (e.keyCode === 65 /* 'a' */) {
-      start = performance.now();
+      const start_ = performance.now();
       voronoi.toggleAA();
-      console.log(`toggle AA: ${(performance.now() - start).toFixed(1)} ms`);
+      console.log(`toggle AA: ${(performance.now() - start_).toFixed(1)} ms`);
     }
     if (e.keyCode === 67 /* 'c' */) {
-      start = performance.now();
+      const start_ = performance.now();
       voronoi.recolor();
-      console.log(`recolor: ${(performance.now() - start).toFixed(1)} ms`);
+      console.log(`recolor: ${(performance.now() - start_).toFixed(1)} ms`);
     }
   });
 }
