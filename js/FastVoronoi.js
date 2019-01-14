@@ -44,6 +44,7 @@ export default class FastVoronoi {
     console.log(`randomize: ${(performance.now() - start).toFixed(1)} ms`);
     return new Promise(resolve => {
       if (previousAntialiasPref) {
+        antialias = true;
         setTimeout(() => {
           const startAA = performance.now();
           antialias = true;
