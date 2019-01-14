@@ -119,7 +119,7 @@ function partition({width, height, tiles, sortedLattice}) {
       const tile = tiles[tileIndex];
       const x = tile.x + dx;
       const y = tile.y + dy;
-      if (0 <= y && y < height && pixels[y][x] === undefined) {
+      if (0 <= y && y < height && 0 <= x && x < width && pixels[y][x] === undefined) {
         pixels[y][x] = tileIndex;
       }
     }
