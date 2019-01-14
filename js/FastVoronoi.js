@@ -12,7 +12,7 @@ const SUBPIXEL_OFFSETS = [
   [-1/3,  1/3], [0,  1/3], [1/3,  1/3],
 ];
 
-let antialias = false;
+let antialias = true;
 let showCapitols = false;
 
 let borderPixels;
@@ -26,6 +26,7 @@ export default class FastVoronoi {
   }
 
   randomize(numTiles) {
+    const start = performance.now();
     this.tiles = placeCapitols({
       width: this.canvas_.width,
       height: this.canvas_.height,
@@ -37,34 +38,49 @@ export default class FastVoronoi {
       tiles: this.tiles,
       sortedLattice: this.sortedLattice_,
     });
+    const previousAntialiasPref = antialias;
     antialias = false;
     render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
-    setTimeout(() => {
-      const start = performance.now();
-      antialias = true;
-      render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
-      console.log(`antialias: ${(performance.now() - start).toFixed(1)} ms`);
-    }, 0);
+    console.log(`randomize: ${(performance.now() - start).toFixed(1)} ms`);
+    return new Promise(resolve => {
+      if (previousAntialiasPref) {
+        setTimeout(() => {
+          const startAA = performance.now();
+          antialias = true;
+          render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+          console.log(`antialias: ${(performance.now() - startAA).toFixed(1)} ms`);
+          resolve();
+        });
+      } else {
+        resolve();
+      }
+    });
   }
 
   recolor() {
+    const start = performance.now();
     for (let tile of this.tiles) {
       tile.color[0] = rand(256);
       tile.color[1] = rand(256);
       tile.color[2] = rand(256);
     }
     render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});  
+    console.log(`recolor: ${(performance.now() - start).toFixed(1)} ms`);
   }
 
   toggleAA() {
+    const start = performance.now();
     antialias = !antialias;
     render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    console.log(`toggle AA: ${(performance.now() - start).toFixed(1)} ms`);
   }
 
   toggleCapitols() {
+    const start = performance.now();
     showCapitols = !showCapitols;
     drawCapitols({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
     this.canvas_.repaint();
+    console.log(`toggle capitols: ${(performance.now() - start).toFixed(1)} ms`);
   }
 }
 
