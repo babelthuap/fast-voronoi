@@ -1,4 +1,4 @@
-import {extractUrlParams, pair, rand} from './util.js';
+import {euclideanDist, extractUrlParams, pair, rand} from './util.js';
 
 const NEIGHBOR_OFFSETS = [
            [0, -1],
@@ -100,10 +100,6 @@ function placeCapitols({width, height, numTiles}) {
     tiles[i] = {x, y, color};
   }
   return tiles;
-}
-
-function euclideanDist(x1, y1, x2, y2) {
-  return (x1 - x2) ** 2 + (y1 - y2) ** 2;
 }
 
 function partition({width, height, tiles, sortedLattice}) {
