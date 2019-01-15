@@ -21,10 +21,6 @@ export function extractUrlParams() {
   }, {});
 }
 
-export function getClosestTileIndex(x, y, tiles, indices) {
-
-}
-
 export function pair(x, y) {
   return (x << 15) | y;
 }
