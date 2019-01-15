@@ -49,10 +49,13 @@ function init(arrayBuffer, canvas) {
   });
 
   setTimeout(() => {
-    alert(`Controls:
+    if (!window.matchMedia('only screen and (max-width: 760px)').matches &&
+        !urlParams['controls']) {
+      alert(`Controls:
       a = toggle antialiasing
       c = recolor
       t = toggle tile capitols
       click = re-randomize`);
+    }
   }, 0);
 }
