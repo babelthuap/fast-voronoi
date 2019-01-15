@@ -64,7 +64,9 @@ export default class FastVoronoi {
       tile.color[2] = rand(256);
     }
     render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
-    renderAntialiasedBorders({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    if (antialias) {
+      renderAntialiasedBorders({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    }
     this.canvas_.repaint();
     console.log(`recolor: ${(performance.now() - start).toFixed(1)} ms`);
   }
