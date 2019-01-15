@@ -1,4 +1,4 @@
-import {euclideanDist, extractUrlParams, pair, rand} from './util.js';
+import {averageSubpixels, euclideanDist, extractUrlParams, pair, rand} from './util.js';
 
 const NEIGHBOR_OFFSETS = [
            [0, -1],
@@ -38,17 +38,13 @@ export default class FastVoronoi {
       tiles: this.tiles,
       sortedLattice: this.sortedLattice_,
     });
-    const previousAntialiasPref = antialias;
-    antialias = false;
     render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
     console.log(`randomize: ${(performance.now() - start).toFixed(1)} ms`);
     return new Promise(resolve => {
-      if (previousAntialiasPref) {
-        antialias = true;
+      if (antialias) {
         setTimeout(() => {
           const startAA = performance.now();
-          antialias = true;
-          render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+          renderAntialiased({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
           console.log(`antialias: ${(performance.now() - startAA).toFixed(1)} ms`);
           resolve();
         });
@@ -72,7 +68,11 @@ export default class FastVoronoi {
   toggleAA() {
     const start = performance.now();
     antialias = !antialias;
-    render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    if (antialias) {
+      renderAntialiased({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    } else {
+      render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    }
     console.log(`toggle AA: ${(performance.now() - start).toFixed(1)} ms`);
   }
 
@@ -126,121 +126,29 @@ function partition({width, height, tiles, sortedLattice}) {
 function render({tiles, pixels, canvas}) {
   const width = canvas.width;
   const height = canvas.height;
-
-  if (!antialias) {
-
-    // don't use antialiasing
-    for (let y = 0; y < height; y++) {
-      const row = pixels[y];
-      for (let x = 0; x < width; x++) {
-        // fill in un-partitioned pixels
-        if (row[x] === undefined) {
-          let closestTileIndex;
-          let minDist = Infinity;
-          for (let i = 0; i < tiles.length; i++) {
-            const tile = tiles[i];
-            const dist = euclideanDist(x, y, tile.x, tile.y);
-            if (dist < minDist) {
-              minDist = dist;
-              closestTileIndex = i;
-            }
+  for (let y = 0; y < height; y++) {
+    const row = pixels[y];
+    for (let x = 0; x < width; x++) {
+      // fill in un-partitioned pixels
+      if (row[x] === undefined) {
+        let closestTileIndex;
+        let minDist = Infinity;
+        for (let i = 0; i < tiles.length; i++) {
+          const tile = tiles[i];
+          const dist = euclideanDist(x, y, tile.x, tile.y);
+          if (dist < minDist) {
+            minDist = dist;
+            closestTileIndex = i;
           }
-          row[x] = closestTileIndex;
         }
-        canvas.setPixel(x, y, tiles[row[x]].color);
+        row[x] = closestTileIndex;
       }
+      canvas.setPixel(x, y, tiles[row[x]].color);
     }
-
-  } else {
-
-    // use antialiasing
-
-    if (bordersKnown) {
-
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          // determine the tiles to which each neighbor pixel belongs
-          const subpixels = borderPixels[y][x];
-          if (subpixels !== undefined) {
-            const colorSum = new Array(3).fill(0);
-            subpixels.forEach(closestTileIndex => {
-              const color = tiles[closestTileIndex].color;
-              colorSum[0] += color[0];
-              colorSum[1] += color[1];
-              colorSum[2] += color[2];
-            });
-            canvas.setPixel(x, y, colorSum.map(c => c / subpixels.length));
-          } else {
-            canvas.setPixel(x, y, tiles[pixels[y][x]].color);
-          }
-        }
-      }
-
-    } else {
-
-      // borders unknown - so we must calculate them
-      if (borderPixels === undefined) {
-        borderPixels = new Array(height);
-      }
-      for (let y = 0; y < height; y++) {
-        if (borderPixels[y] === undefined) {
-          borderPixels[y] = new Array(width);
-        }
-        for (let x = 0; x < width; x++) {
-          // determine the tiles to which each neighbor pixel belongs
-          const nbrTileIndices = [];
-          NEIGHBOR_OFFSETS.forEach(([dx, dy]) => {
-            const nbrX = x + dx;
-            const nbrY = y + dy;
-            let nbrIndex;
-            if (pixels[nbrY] !== undefined &&
-                (nbrIndex = pixels[nbrY][nbrX]) !== undefined &&
-                !nbrTileIndices.includes(nbrIndex)) {
-              nbrTileIndices.push(nbrIndex);
-            }
-          });
-          // if this is a border pixel, then sample subpixels
-          if (nbrTileIndices.some(nbrIndex => nbrIndex !== pixels[y][x])) {
-            const subpixels = SUBPIXEL_OFFSETS.map(([dx, dy]) => {
-              const subpixelX = x + dx;
-              const subpixelY = y + dy;
-              let closestTileIndex;
-              let minDist = Infinity;
-              for (let i of nbrTileIndices) {
-                const tile = tiles[i];
-                const dist = euclideanDist(subpixelX, subpixelY, tile.x, tile.y);
-                if (dist < minDist) {
-                  minDist = dist;
-                  closestTileIndex = i;
-                }
-              }
-              return closestTileIndex;
-            });
-            borderPixels[y][x] = subpixels;
-            const colorSum = new Array(3).fill(0);
-            subpixels.forEach(closestTileIndex => {
-              const color = tiles[closestTileIndex].color;
-              colorSum[0] += color[0];
-              colorSum[1] += color[1];
-              colorSum[2] += color[2];
-            });
-            canvas.setPixel(x, y, colorSum.map(c => c / subpixels.length));
-          } else {
-            borderPixels[y][x] = undefined;
-            canvas.setPixel(x, y, tiles[pixels[y][x]].color);
-          }
-        }
-      }
-      bordersKnown = true;
-
-    } // end borders unknown
-
-  } // end antialiasing
-
+  }
   if (showCapitols) {
     drawCapitols({tiles, pixels, canvas});
   }
-
   canvas.repaint();
 }
 
@@ -249,4 +157,76 @@ function drawCapitols({tiles, pixels, canvas}) {
     const color = tiles[pixels[y][x]].color;
     canvas.setPixel(x, y, showCapitols ? color.map(c => (c + 128) % 256) : color);
   })
+}
+
+function renderAntialiased({tiles, pixels, canvas}) {
+  const width = canvas.width;
+  const height = canvas.height;
+  if (bordersKnown) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const subpixels = borderPixels[y][x];
+        if (subpixels !== undefined) {
+          canvas.setPixel(x, y, averageSubpixels(subpixels, tiles));
+        }
+      }
+    }
+  } else {
+    // borders unknown - so we must calculate them
+    if (borderPixels === undefined) {
+      borderPixels = new Array(height);
+    }
+    for (let y = 0; y < height; y++) {
+      if (borderPixels[y] === undefined) {
+        borderPixels[y] = new Array(width);
+      }
+      for (let x = 0; x < width; x++) {
+        // determine the tiles to which each neighbor pixel belongs
+        const nbrTileIndices = getNbrTileIndices(x, y, width, height, pixels);
+        // if this is a border pixel, then sample subpixels
+        if (nbrTileIndices.some(nbrIndex => nbrIndex !== pixels[y][x])) {
+          const subpixels = getSubpixelTileIndices(x, y, tiles, nbrTileIndices);
+          borderPixels[y][x] = subpixels;
+          canvas.setPixel(x, y, averageSubpixels(subpixels, tiles));
+        } else {
+          borderPixels[y][x] = undefined;
+        }
+      }
+    }
+    bordersKnown = true;
+  }
+  canvas.repaint();
+}
+
+function getNbrTileIndices(x, y, width, height, pixels) {
+  const nbrTileIndices = new Array(NEIGHBOR_OFFSETS.length);
+  let i = 0;
+  NEIGHBOR_OFFSETS.forEach(([dx, dy]) => {
+    const nbrX = x + dx;
+    const nbrY = y + dy;
+    let nbrIndex;
+    if (0 <= nbrY && nbrY < height && 0 <= nbrX && nbrX < width &&
+        !nbrTileIndices.includes(nbrIndex = pixels[nbrY][nbrX])) {
+      nbrTileIndices[i++] = nbrIndex;
+    }
+  });
+  return nbrTileIndices;
+}
+
+function getSubpixelTileIndices(x, y, tiles, nbrTileIndices) {
+  return SUBPIXEL_OFFSETS.map(([dx, dy]) => {
+    const subpixelX = x + dx;
+    const subpixelY = y + dy;
+    let closestTileIndex;
+    let minDist = Infinity;
+    nbrTileIndices.forEach(i => {
+      const tile = tiles[i];
+      const dist = euclideanDist(subpixelX, subpixelY, tile.x, tile.y);
+      if (dist < minDist) {
+        minDist = dist;
+        closestTileIndex = i;
+      }
+    });
+    return closestTileIndex;
+  });
 }
