@@ -39,15 +39,17 @@ export default class FastVoronoi {
       sortedLattice: this.sortedLattice_,
     });
     render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    this.canvas_.repaint();
     console.log(`randomize: ${(performance.now() - start).toFixed(1)} ms`);
     return new Promise(resolve => {
       if (antialias) {
         setTimeout(() => {
           const startAA = performance.now();
-          renderAntialiased({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+          renderAntialiasedBorders({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+          this.canvas_.repaint();
           console.log(`antialias: ${(performance.now() - startAA).toFixed(1)} ms`);
           resolve();
-        });
+        }, 0);
       } else {
         resolve();
       }
@@ -61,7 +63,9 @@ export default class FastVoronoi {
       tile.color[1] = rand(256);
       tile.color[2] = rand(256);
     }
-    render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});  
+    render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    renderAntialiasedBorders({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    this.canvas_.repaint();
     console.log(`recolor: ${(performance.now() - start).toFixed(1)} ms`);
   }
 
@@ -69,10 +73,11 @@ export default class FastVoronoi {
     const start = performance.now();
     antialias = !antialias;
     if (antialias) {
-      renderAntialiased({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+      renderAntialiasedBorders({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
     } else {
       render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
     }
+    this.canvas_.repaint();
     console.log(`toggle AA: ${(performance.now() - start).toFixed(1)} ms`);
   }
 
@@ -149,7 +154,6 @@ function render({tiles, pixels, canvas}) {
   if (showCapitols) {
     drawCapitols({tiles, pixels, canvas});
   }
-  canvas.repaint();
 }
 
 function drawCapitols({tiles, pixels, canvas}) {
@@ -159,7 +163,7 @@ function drawCapitols({tiles, pixels, canvas}) {
   })
 }
 
-function renderAntialiased({tiles, pixels, canvas}) {
+function renderAntialiasedBorders({tiles, pixels, canvas}) {
   const width = canvas.width;
   const height = canvas.height;
   if (bordersKnown) {
@@ -195,7 +199,6 @@ function renderAntialiased({tiles, pixels, canvas}) {
     }
     bordersKnown = true;
   }
-  canvas.repaint();
 }
 
 function getNbrTileIndices(x, y, width, height, pixels) {

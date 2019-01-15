@@ -45,7 +45,7 @@ function init(arrayBuffer, canvas) {
     if (keyCode === 84 /* 't' */) {
       voronoi.toggleCapitols();
     }
-    setTimeout(() => handlingKeypress = false);
+    setTimeout(() => handlingKeypress = false, 0);
   });
 
   setTimeout(() => {
