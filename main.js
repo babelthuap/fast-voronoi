@@ -2,12 +2,6 @@ import Canvas from './js/Canvas.js';
 import FastVoronoi from './js/FastVoronoi.js';
 import {extractUrlParams} from './js/util.js';
 
-const urlParams = extractUrlParams();
-const getNumTiles = () => {
-  return parseInt(urlParams['n']) ||
-      Math.round(window.innerWidth * window.innerHeight / 3000);
-};
-
 Promise.all([
   fetch('./lattice/sorted'),
   Promise.resolve(new Canvas()),
@@ -17,8 +11,7 @@ Promise.all([
 
 function init(arrayBuffer, canvas) {
   const sortedLattice = new Int8Array(arrayBuffer);
-  const numTiles = getNumTiles();
-  const voronoi = new FastVoronoi({canvas, numTiles, sortedLattice});
+  const voronoi = new FastVoronoi(canvas, sortedLattice);
   canvas.attachToDom();
 
   let handlingMousedown = false;
@@ -27,7 +20,7 @@ function init(arrayBuffer, canvas) {
       return;
     }
     handlingMousedown = true;
-    voronoi.randomize(getNumTiles()).then(() => handlingMousedown = false);
+    voronoi.randomize().then(() => handlingMousedown = false);
   });
 
   let handlingKeypress = false;
@@ -50,7 +43,7 @@ function init(arrayBuffer, canvas) {
 
   setTimeout(() => {
     if (!window.matchMedia('only screen and (max-width: 760px)').matches &&
-        !urlParams['controls']) {
+        extractUrlParams()['controls'] !== 'false') {
       alert(`Controls:
       a = toggle antialiasing
       c = recolor

@@ -12,14 +12,23 @@ const SUBPIXEL_OFFSETS = [
   [-1/3,  1/3], [0,  1/3], [1/3,  1/3],
 ];
 
-let antialias = true;
-let showCapitols = false;
+const urlParams = extractUrlParams();
+
+let antialias = urlParams.a !== 'false';
+let showCapitols = urlParams.t === 'true';
+let capitolArea;
+let numTiles;
 
 let borderPixels;
 let bordersKnown = false;
 
 export default class FastVoronoi {
-  constructor({canvas, numTiles, sortedLattice}) {
+  constructor(canvas, sortedLattice) {
+    numTiles = parseInt(urlParams.n) ||
+        Math.round(window.innerWidth * window.innerHeight / 3000);
+    capitolArea = Math.min(
+        sortedLattice.length,
+        Math.ceil(canvas.width * canvas.height / (100 * numTiles)));
     this.canvas_ = canvas;
     this.sortedLattice_ = sortedLattice;
     this.randomize(numTiles);
@@ -27,27 +36,20 @@ export default class FastVoronoi {
 
   randomize(numTiles) {
     const start = performance.now();
-    this.tiles = placeCapitols({
-      width: this.canvas_.width,
-      height: this.canvas_.height,
-      numTiles: numTiles,
-    });
-    this.pixels = partition({
-      width: this.canvas_.width,
-      height: this.canvas_.height,
-      tiles: this.tiles,
-      sortedLattice: this.sortedLattice_,
-    });
-    render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    this.tiles = placeCapitols(this.canvas_.width, this.canvas_.height);
+    this.pixels = partition(
+        this.canvas_.width, this.canvas_.height, this.tiles, this.sortedLattice_);
+    render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
     this.canvas_.repaint();
     console.log(`randomize: ${(performance.now() - start).toFixed(1)} ms`);
     return new Promise(resolve => {
       if (antialias) {
         setTimeout(() => {
           const startAA = performance.now();
-          renderAntialiasedBorders({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+          renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
           this.canvas_.repaint();
-          console.log(`antialias: ${(performance.now() - startAA).toFixed(1)} ms`);
+          console.log(
+              `antialias: ${(performance.now() - startAA).toFixed(1)} ms`);
           resolve();
         }, 0);
       } else {
@@ -63,9 +65,9 @@ export default class FastVoronoi {
       tile.color[1] = rand(256);
       tile.color[2] = rand(256);
     }
-    render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
     if (antialias) {
-      renderAntialiasedBorders({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+      renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
     }
     this.canvas_.repaint();
     console.log(`recolor: ${(performance.now() - start).toFixed(1)} ms`);
@@ -75,9 +77,9 @@ export default class FastVoronoi {
     const start = performance.now();
     antialias = !antialias;
     if (antialias) {
-      renderAntialiasedBorders({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+      renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
     } else {
-      render({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+      render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
     }
     this.canvas_.repaint();
     console.log(`toggle AA: ${(performance.now() - start).toFixed(1)} ms`);
@@ -86,13 +88,14 @@ export default class FastVoronoi {
   toggleCapitols() {
     const start = performance.now();
     showCapitols = !showCapitols;
-    drawCapitols({tiles: this.tiles, pixels: this.pixels, canvas: this.canvas_});
+    drawCapitols(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
     this.canvas_.repaint();
-    console.log(`toggle capitols: ${(performance.now() - start).toFixed(1)} ms`);
+    console.log(
+        `toggle capitols: ${(performance.now() - start).toFixed(1)} ms`);
   }
 }
 
-function placeCapitols({width, height, numTiles}) {
+function placeCapitols(width, height) {
   const tiles = new Array(numTiles);
   const capitols = new Set();
   for (let i = 0; i < numTiles; i++) {
@@ -109,7 +112,7 @@ function placeCapitols({width, height, numTiles}) {
   return tiles;
 }
 
-function partition({width, height, tiles, sortedLattice}) {
+function partition(width, height, tiles, sortedLattice) {
   bordersKnown = false;
   const pixels = new Array(height).fill().map(() => new Array(width));
   const thisSeemsToWork = 2.34 * (width + height) ** 2 / tiles.length;
@@ -122,7 +125,8 @@ function partition({width, height, tiles, sortedLattice}) {
       const tile = tiles[tileIndex];
       const x = tile.x + dx;
       const y = tile.y + dy;
-      if (0 <= y && y < height && 0 <= x && x < width && pixels[y][x] === undefined) {
+      if (0 <= y && y < height && 0 <= x && x < width &&
+          pixels[y][x] === undefined) {
         pixels[y][x] = tileIndex;
       }
     }
@@ -130,7 +134,7 @@ function partition({width, height, tiles, sortedLattice}) {
   return pixels;
 }
 
-function render({tiles, pixels, canvas}) {
+function render(tiles, pixels, canvas, sortedLattice) {
   const width = canvas.width;
   const height = canvas.height;
   for (let y = 0; y < height; y++) {
@@ -154,18 +158,25 @@ function render({tiles, pixels, canvas}) {
     }
   }
   if (showCapitols) {
-    drawCapitols({tiles, pixels, canvas});
+    drawCapitols(tiles, pixels, canvas, sortedLattice);
   }
 }
 
-function drawCapitols({tiles, pixels, canvas}) {
-  tiles.forEach(({x, y}) => {
-    const color = tiles[pixels[y][x]].color;
-    canvas.setPixel(x, y, showCapitols ? color.map(c => (c + 128) % 256) : color);
-  })
+function drawCapitols(tiles, pixels, canvas, sortedLattice) {
+  for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
+    const {x, y, color} = tiles[tileIndex];
+    const capColor = showCapitols ? color.map(c => (c + 128) % 256) : color;
+    for (let i = 0; i < capitolArea; i += 2) {
+      const capX = x + sortedLattice[i];
+      const capY = y + sortedLattice[i + 1];
+      if (pixels[capY] !== undefined && pixels[capY][capX] === tileIndex) {
+        canvas.setPixel(capX, capY, capColor);
+      }
+    }
+  }
 }
 
-function renderAntialiasedBorders({tiles, pixels, canvas}) {
+function renderAntialiasedBorders(tiles, pixels, canvas) {
   const width = canvas.width;
   const height = canvas.height;
   if (bordersKnown) {
