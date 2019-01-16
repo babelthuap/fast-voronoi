@@ -1,11 +1,5 @@
 import {averageSubpixels, euclideanDist, extractUrlParams, pair, rand} from './util.js';
 
-const NEIGHBOR_OFFSETS = [
-           [0, -1],
-  [-1, 0],          [1, 0],
-           [0,  1],
-];
-
 const SUBPIXEL_OFFSETS = [
   [-1/3, -1/3], [0, -1/3], [1/3, -1/3],
   [-1/3,    0], [0,    0], [1/3,    0],
@@ -197,8 +191,8 @@ function renderAntialiasedBorders(tiles, pixels, canvas) {
         const nbrTileIndices = borderPixels[y][x];
         // if this is a border pixel, then sample subpixels
         if (nbrTileIndices !== undefined) {
-          nbrTileIndices.add(pixels[y][x]);
-          const subpixels = getSubpixelTileIndices(x, y, tiles, nbrTileIndices);
+          const subpixels = getSubpixelTileIndices(
+              x, y, tiles, pixels[y][x], nbrTileIndices);
           borderPixels[y][x] = subpixels;
           canvas.setPixel(x, y, averageSubpixels(subpixels, tiles));
         }
@@ -209,6 +203,13 @@ function renderAntialiasedBorders(tiles, pixels, canvas) {
   }
 }
 
+Array.prototype.add = function(e) {
+  if (!this.includes(e)) {
+    this.push(e);
+  }
+  return this;
+};
+
 function calculateNbrTileIndices(height, width, pixels) {
   if (borderPixels === undefined) {
     borderPixels = new Array(height);
@@ -218,9 +219,8 @@ function calculateNbrTileIndices(height, width, pixels) {
     borderPixels[y] = new Array(width);
     for (let x = 0; x < widthMinusOne; x++) {
       if (pixels[y][x] !== pixels[y][x + 1]) {
-        borderPixels[y][x] =
-            (borderPixels[y][x] || new Set()).add(pixels[y][x + 1]);
-        borderPixels[y][x + 1] = new Set().add(pixels[y][x]);
+        borderPixels[y][x] = (borderPixels[y][x] || []).add(pixels[y][x + 1]);
+        borderPixels[y][x + 1] = [pixels[y][x]];
       }
     }
   }
@@ -228,24 +228,23 @@ function calculateNbrTileIndices(height, width, pixels) {
   for (let x = 0; x < width; x++) {
     for (let y = 0; y < heightMinusOne; y++) {
       if (pixels[y][x] !== pixels[y + 1][x]) {
-        borderPixels[y][x] =
-            (borderPixels[y][x] || new Set()).add(pixels[y + 1][x]);
-        borderPixels[y + 1][x] =
-            (borderPixels[y + 1][x] || new Set()).add(pixels[y][x]);
+        borderPixels[y][x] = (borderPixels[y][x] || []).add(pixels[y + 1][x]);
+        borderPixels[y + 1][x] = (borderPixels[y + 1][x] || []).add(pixels[y][x]);
       }
     }
   }
 }
 
-function getSubpixelTileIndices(x, y, tiles, nbrTileIndices) {
+function getSubpixelTileIndices(x, y, tiles, pixelIndex, nbrTileIndices) {
+  const tile = tiles[pixelIndex];
   return SUBPIXEL_OFFSETS.map(([dx, dy]) => {
     const subpixelX = x + dx;
     const subpixelY = y + dy;
-    let closestTileIndex;
-    let minDist = Infinity;
+    let closestTileIndex = pixelIndex;
+    let minDist = euclideanDist(subpixelX, subpixelY, tile.x, tile.y);
     nbrTileIndices.forEach(i => {
-      const tile = tiles[i];
-      const dist = euclideanDist(subpixelX, subpixelY, tile.x, tile.y);
+      const nbrTile = tiles[i];
+      const dist = euclideanDist(subpixelX, subpixelY, nbrTile.x, nbrTile.y);
       if (dist < minDist) {
         minDist = dist;
         closestTileIndex = i;
