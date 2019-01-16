@@ -190,43 +190,51 @@ function renderAntialiasedBorders(tiles, pixels, canvas) {
     }
   } else {
     // borders unknown - so we must calculate them
-    if (borderPixels === undefined) {
-      borderPixels = new Array(height);
-    }
+    calculateNbrTileIndices(height, width, pixels);
     for (let y = 0; y < height; y++) {
-      if (borderPixels[y] === undefined) {
-        borderPixels[y] = new Array(width);
-      }
       for (let x = 0; x < width; x++) {
         // determine the tiles to which each neighbor pixel belongs
-        const nbrTileIndices = getNbrTileIndices(x, y, width, height, pixels);
+        const nbrTileIndices = borderPixels[y][x];
         // if this is a border pixel, then sample subpixels
-        if (nbrTileIndices.some(nbrIndex => nbrIndex !== pixels[y][x])) {
+        if (nbrTileIndices !== undefined) {
+          nbrTileIndices.add(pixels[y][x]);
           const subpixels = getSubpixelTileIndices(x, y, tiles, nbrTileIndices);
           borderPixels[y][x] = subpixels;
           canvas.setPixel(x, y, averageSubpixels(subpixels, tiles));
-        } else {
-          borderPixels[y][x] = undefined;
         }
       }
     }
+
     bordersKnown = true;
   }
 }
 
-function getNbrTileIndices(x, y, width, height, pixels) {
-  const nbrTileIndices = new Array(NEIGHBOR_OFFSETS.length);
-  let i = 0;
-  NEIGHBOR_OFFSETS.forEach(([dx, dy]) => {
-    const nbrX = x + dx;
-    const nbrY = y + dy;
-    let nbrIndex;
-    if (0 <= nbrY && nbrY < height && 0 <= nbrX && nbrX < width &&
-        !nbrTileIndices.includes(nbrIndex = pixels[nbrY][nbrX])) {
-      nbrTileIndices[i++] = nbrIndex;
+function calculateNbrTileIndices(height, width, pixels) {
+  if (borderPixels === undefined) {
+    borderPixels = new Array(height);
+  }
+  const widthMinusOne = width - 1;
+  for (let y = 0; y < height; y++) {
+    borderPixels[y] = new Array(width);
+    for (let x = 0; x < widthMinusOne; x++) {
+      if (pixels[y][x] !== pixels[y][x + 1]) {
+        borderPixels[y][x] =
+            (borderPixels[y][x] || new Set()).add(pixels[y][x + 1]);
+        borderPixels[y][x + 1] = new Set().add(pixels[y][x]);
+      }
     }
-  });
-  return nbrTileIndices;
+  }
+  const heightMinusOne = height - 1;
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < heightMinusOne; y++) {
+      if (pixels[y][x] !== pixels[y + 1][x]) {
+        borderPixels[y][x] =
+            (borderPixels[y][x] || new Set()).add(pixels[y + 1][x]);
+        borderPixels[y + 1][x] =
+            (borderPixels[y + 1][x] || new Set()).add(pixels[y][x]);
+      }
+    }
+  }
 }
 
 function getSubpixelTileIndices(x, y, tiles, nbrTileIndices) {
