@@ -203,11 +203,11 @@ function renderAntialiasedBorders(tiles, pixels, canvas) {
   }
 }
 
-Array.prototype.add = function(e) {
-  if (!this.includes(e)) {
-    this.push(e);
+function add(arr, e) {
+  if (!arr.includes(e)) {
+    arr.push(e);
   }
-  return this;
+  return arr;
 };
 
 function calculateNbrTileIndices(height, width, pixels) {
@@ -219,7 +219,7 @@ function calculateNbrTileIndices(height, width, pixels) {
     borderPixels[y] = new Array(width);
     for (let x = 0; x < widthMinusOne; x++) {
       if (pixels[y][x] !== pixels[y][x + 1]) {
-        borderPixels[y][x] = (borderPixels[y][x] || []).add(pixels[y][x + 1]);
+        borderPixels[y][x] = add(borderPixels[y][x] || [], pixels[y][x + 1]);
         borderPixels[y][x + 1] = [pixels[y][x]];
       }
     }
@@ -228,8 +228,8 @@ function calculateNbrTileIndices(height, width, pixels) {
   for (let x = 0; x < width; x++) {
     for (let y = 0; y < heightMinusOne; y++) {
       if (pixels[y][x] !== pixels[y + 1][x]) {
-        borderPixels[y][x] = (borderPixels[y][x] || []).add(pixels[y + 1][x]);
-        borderPixels[y + 1][x] = (borderPixels[y + 1][x] || []).add(pixels[y][x]);
+        borderPixels[y][x] = add(borderPixels[y][x] || [], pixels[y + 1][x]);
+        borderPixels[y + 1][x] = add(borderPixels[y + 1][x] || [], pixels[y][x]);
       }
     }
   }
