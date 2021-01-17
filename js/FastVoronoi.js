@@ -16,6 +16,8 @@ let showCapitols = urlParams.t === 'true';
 let capitolArea;
 let numTiles;
 
+let borderGuesses;
+
 let borderPixels;
 let bordersKnown = false;
 
@@ -175,53 +177,87 @@ const findClosestTile = (pixelIndex, width, tiles) => {
 function render(tiles, pixels, canvas, sortedLattice) {
   const width = canvas.width;
   const height = canvas.height;
+  const borderGuesses = calculateBorderGuesses(width, height, tiles.length);
   const getOrCalculatePixel = (pixelIndex) => {
     const tileIndex = pixels[pixelIndex];
     return tileIndex === undefined ?
         pixels[pixelIndex] = findClosestTile(pixelIndex, width, tiles) :
         tileIndex;
   };
+
   // render each row
   for (let y = 0; y < height; y++) {
-    const rowOffset = width * y;
-    const rowEnd = width + rowOffset;
-    // TODO: use the insight that cell borders don't change much from row to row
-    for (let left = rowOffset; left < rowEnd; /* increment handled below */) {
-      let tileIndex = pixels[left];
-      if (tileIndex === undefined) {
-        // fill in un-partitioned pixels: starting at left, binary search for
-        // border with next color in this row, then fill the pixels in between
-        tileIndex = (pixels[left] = findClosestTile(left, width, tiles));
-        let right = rowOffset + width - 1;
-        if (getOrCalculatePixel(right) !== tileIndex) {
-          // search for border
-          let step = Math.max((right - left) >> 1, 1);
-          do {
-            if (pixels[right] === tileIndex) {
-              right += step;
-            } else {
-              right -= step;
-            }
-            if (step > 1) {
-              step >>= 1;
-            }
-          } while (getOrCalculatePixel(right) !== tileIndex ||
-                   getOrCalculatePixel(right + 1) === tileIndex);
-        }
-        for (let pixelIndex = left; pixelIndex <= right; pixelIndex++) {
-          pixels[pixelIndex] = tileIndex;
-          canvas.setPixel(pixelIndex, tiles[tileIndex].color);
-        }
-        left = right + 1;
-      } else {
-        // color in known pixels
-        canvas.setPixel(left, tiles[tileIndex].color);
-        left++;
-      }
-    }
+    renderRow(y, borderGuesses, tiles, pixels, canvas, getOrCalculatePixel);
   }
   if (showCapitols) {
     drawCapitols(tiles, pixels, canvas, sortedLattice);
+  }
+}
+
+function calculateBorderGuesses(width, height, numTiles) {
+  if (borderGuesses !== undefined) {
+    return borderGuesses;
+  }
+  const expectedTilesPerRow =
+      Math.ceil(Math.sqrt(width * numTiles / height));
+  borderGuesses = new Array(expectedTilesPerRow);
+  for (let i = 0; i < expectedTilesPerRow; i++) {
+    borderGuesses[i] = Math.round((i + 1) * width / expectedTilesPerRow) - 1;
+  }
+  return borderGuesses;
+}
+
+function renderRow(
+    y, borderGuesses, tiles, pixels, canvas, getOrCalculatePixel) {
+  const width = canvas.width;
+  const rowOffset = width * y;
+  const rowEnd = width + rowOffset;
+  // TODO: use the insight that cell borders don't change much from row to row
+  let left = rowOffset;
+  let guessI = 0;
+  while (left < rowEnd) {
+    let tileIndex = pixels[left];
+    if (tileIndex === undefined) {
+      // fill in un-partitioned pixels: starting at left, search for the border
+      // with next color in this row, then fill the pixels in between
+      tileIndex = (pixels[left] = findClosestTile(left, width, tiles));
+
+      // make an educated guess about where the next tile will be
+      let right = left + borderGuesses[guessI];
+      while (getOrCalculatePixel(right) === tileIndex &&
+             guessI < borderGuesses.length) {
+        right = left + borderGuesses[++guessI];
+      }
+
+      // search for border
+      if (getOrCalculatePixel(right) !== tileIndex) {
+        let step = Math.max((right - left) >> 1, 1);
+        do {
+          if (pixels[right] === tileIndex) {
+            right += step;
+          } else {
+            right -= step;
+          }
+          if (step > 1) {
+            step >>= 1;
+          }
+        } while (getOrCalculatePixel(right) !== tileIndex ||
+                 getOrCalculatePixel(right + 1) === tileIndex);
+      }
+
+      // fill line of same-color pixels
+      for (let pixelIndex = left; pixelIndex <= right; pixelIndex++) {
+        pixels[pixelIndex] = tileIndex;
+        canvas.setPixel(pixelIndex, tiles[tileIndex].color);
+      }
+
+      left = right + 1;
+
+    } else {
+      // color in known pixels
+      canvas.setPixel(left, tiles[tileIndex].color);
+      left++;
+    }
   }
 }
 
@@ -277,7 +313,7 @@ function renderAntialiasedBorders(tiles, pixels, canvas) {
   }
 }
 
-function add(arr, e) {
+const add = (arr, e) => {
   if (!arr.includes(e)) {
     arr.push(e);
   }
