@@ -1,16 +1,26 @@
+const {PI, atan, sign} = Math;
+
 export function averageSubpixels(subpixels, tiles) {
-  const colorSum = new Array(3).fill(0);
-  subpixels.forEach(closestTileIndex => {
-    const color = tiles[closestTileIndex].color;
-    colorSum[0] += color[0];
-    colorSum[1] += color[1];
-    colorSum[2] += color[2];
-  });
-  return colorSum.map(c => c / subpixels.length);
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (let i = 0; i < subpixels.length; i++) {
+    const color = tiles[subpixels[i]].color;
+    r += color[0];
+    g += color[1];
+    b += color[2];
+  }
+  const average = new Uint8ClampedArray(3);
+  average[0] = r / subpixels.length;
+  average[1] = g / subpixels.length;
+  average[2] = b / subpixels.length;
+  return average;
 }
 
 export function euclideanDist(x1, y1, x2, y2) {
-  return (x1 - x2) ** 2 + (y1 - y2) ** 2;
+  const x = x1 - x2;
+  const y = y1 - y2;
+  return x * x + y * y;
 }
 
 export function extractUrlParams() {

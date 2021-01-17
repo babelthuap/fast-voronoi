@@ -30,31 +30,37 @@ export default class FastVoronoi {
 
   randomize(numTiles) {
     const start = performance.now();
-    this.tiles = placeCapitols(this.canvas_.width, this.canvas_.height);
-    this.pixels = partition(
-        this.canvas_.width, this.canvas_.height, this.tiles, this.sortedLattice_);
-    render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
-    this.canvas_.repaint();
-    console.log(`randomize: ${(performance.now() - start).toFixed(1)} ms`);
+
     return new Promise(resolve => {
-      if (antialias) {
-        setTimeout(() => {
+      requestAnimationFrame(() => {
+        this.tiles = placeCapitols(this.canvas_.width, this.canvas_.height);
+        this.pixels = partition(
+            this.canvas_.width, this.canvas_.height, this.tiles,
+            this.sortedLattice_);
+        render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
+        this.canvas_.repaint();
+        console.log(`randomize: ${(performance.now() - start).toFixed(1)} ms`);
+
+        if (antialias) {
           const startAA = performance.now();
-          renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
-          this.canvas_.repaint();
-          console.log(
-              `antialias: ${(performance.now() - startAA).toFixed(1)} ms`);
+          requestAnimationFrame(() => {
+            renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
+            this.canvas_.repaint();
+            console.log(
+                `antialias: ${(performance.now() - startAA).toFixed(1)} ms`);
+            resolve();
+          });
+        } else {
           resolve();
-        }, 0);
-      } else {
-        resolve();
-      }
+        }
+      });
     });
   }
 
   recolor() {
     const start = performance.now();
-    for (let tile of this.tiles) {
+    for (let i = 0; i < this.tiles.length; i++) {
+      const tile = this.tiles[i];
       tile.color[0] = rand(256);
       tile.color[1] = rand(256);
       tile.color[2] = rand(256);
@@ -108,7 +114,7 @@ function placeCapitols(width, height) {
 
 function partition(width, height, tiles, sortedLattice) {
   bordersKnown = false;
-  const pixels = new Array(height).fill().map(() => new Array(width));
+  const pixels = new Array(width * height);
   const thisSeemsToWork = 2.34 * (width + height) ** 2 / tiles.length;
   const expandArea = Math.min(thisSeemsToWork, sortedLattice.length);
   // partition by expanding circles
@@ -117,11 +123,15 @@ function partition(width, height, tiles, sortedLattice) {
     const dy = sortedLattice[i + 1];
     for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
       const tile = tiles[tileIndex];
-      const x = tile.x + dx;
       const y = tile.y + dy;
-      if (0 <= y && y < height && 0 <= x && x < width &&
-          pixels[y][x] === undefined) {
-        pixels[y][x] = tileIndex;
+      if (y < height && y >= 0) {
+        const x = tile.x + dx;
+        if (x >= 0 && x < width) {
+          const pixelIndex = x + width * y;
+          if (pixels[pixelIndex] === undefined) {
+            pixels[pixelIndex] = tileIndex;
+          }
+        }
       }
     }
   }
@@ -132,10 +142,12 @@ function render(tiles, pixels, canvas, sortedLattice) {
   const width = canvas.width;
   const height = canvas.height;
   for (let y = 0; y < height; y++) {
-    const row = pixels[y];
+    const rowOffset = width * y;
     for (let x = 0; x < width; x++) {
       // fill in un-partitioned pixels
-      if (row[x] === undefined) {
+      // TODO: optimize
+      const pixelIndex = x + rowOffset;
+      if (pixels[pixelIndex] === undefined) {
         let closestTileIndex;
         let minDist = Infinity;
         for (let i = 0; i < tiles.length; i++) {
@@ -146,9 +158,9 @@ function render(tiles, pixels, canvas, sortedLattice) {
             closestTileIndex = i;
           }
         }
-        row[x] = closestTileIndex;
+        pixels[pixelIndex] = closestTileIndex;
       }
-      canvas.setPixel(x, y, tiles[row[x]].color);
+      canvas.setPixel(x, y, tiles[pixels[pixelIndex]].color);
     }
   }
   if (showCapitols) {
@@ -157,13 +169,15 @@ function render(tiles, pixels, canvas, sortedLattice) {
 }
 
 function drawCapitols(tiles, pixels, canvas, sortedLattice) {
+  const width = canvas.width;
+  const height = canvas.height;
   for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
     const {x, y, color} = tiles[tileIndex];
     const capColor = showCapitols ? color.map(c => (c + 128) % 256) : color;
     for (let i = 0; i < capitolArea; i += 2) {
       const capX = x + sortedLattice[i];
       const capY = y + sortedLattice[i + 1];
-      if (pixels[capY] !== undefined && pixels[capY][capX] === tileIndex) {
+      if (capY < height && pixels[capX + width * capY] === tileIndex) {
         canvas.setPixel(capX, capY, capColor);
       }
     }
@@ -191,8 +205,8 @@ function renderAntialiasedBorders(tiles, pixels, canvas) {
         const nbrTileIndices = borderPixels[y][x];
         // if this is a border pixel, then sample subpixels
         if (nbrTileIndices !== undefined) {
-          const subpixels = getSubpixelTileIndices(
-              x, y, tiles, pixels[y][x], nbrTileIndices);
+          const subpixels =
+              getSubpixelTileIndices(x, y, tiles, pixels[x + width * y], nbrTileIndices);
           borderPixels[y][x] = subpixels;
           canvas.setPixel(x, y, averageSubpixels(subpixels, tiles));
         }
@@ -216,20 +230,24 @@ function calculateNbrTileIndices(height, width, pixels) {
   }
   const widthMinusOne = width - 1;
   for (let y = 0; y < height; y++) {
-    borderPixels[y] = new Array(width);
+    const row = borderPixels[y] = new Array(width);
     for (let x = 0; x < widthMinusOne; x++) {
-      if (pixels[y][x] !== pixels[y][x + 1]) {
-        borderPixels[y][x] = add(borderPixels[y][x] || [], pixels[y][x + 1]);
-        borderPixels[y][x + 1] = [pixels[y][x]];
+      const pixelIndex = x + width * y;
+      if (pixels[pixelIndex] !== pixels[pixelIndex + 1]) {
+        row[x] = add(row[x] || [], pixels[pixelIndex + 1]);
+        row[x + 1] = [pixels[pixelIndex]];
       }
     }
   }
   const heightMinusOne = height - 1;
   for (let x = 0; x < width; x++) {
     for (let y = 0; y < heightMinusOne; y++) {
-      if (pixels[y][x] !== pixels[y + 1][x]) {
-        borderPixels[y][x] = add(borderPixels[y][x] || [], pixels[y + 1][x]);
-        borderPixels[y + 1][x] = add(borderPixels[y + 1][x] || [], pixels[y][x]);
+      const pixelIndex = x + width * y;
+      if (pixels[pixelIndex] !== pixels[pixelIndex + width]) {
+        borderPixels[y][x] =
+            add(borderPixels[y][x] || [], pixels[pixelIndex + width]);
+        borderPixels[y + 1][x] =
+            add(borderPixels[y + 1][x] || [], pixels[pixelIndex]);
       }
     }
   }
@@ -242,14 +260,15 @@ function getSubpixelTileIndices(x, y, tiles, pixelIndex, nbrTileIndices) {
     const subpixelY = y + dy;
     let closestTileIndex = pixelIndex;
     let minDist = euclideanDist(subpixelX, subpixelY, tile.x, tile.y);
-    nbrTileIndices.forEach(i => {
-      const nbrTile = tiles[i];
+    for (let i = 0; i < nbrTileIndices.length; i++) {
+      const index = nbrTileIndices[i];
+      const nbrTile = tiles[index];
       const dist = euclideanDist(subpixelX, subpixelY, nbrTile.x, nbrTile.y);
       if (dist < minDist) {
         minDist = dist;
-        closestTileIndex = i;
+        closestTileIndex = index;
       }
-    });
+    }
     return closestTileIndex;
   });
 }
