@@ -25,7 +25,7 @@ export default class FastVoronoi {
         Math.ceil(canvas.width * canvas.height / (100 * numTiles)));
     this.canvas_ = canvas;
     this.sortedLattice_ = sortedLattice;
-    this.randomize(numTiles);
+    this.firstRenderPromise = this.randomize(numTiles);
   }
 
   randomize(numTiles) {
