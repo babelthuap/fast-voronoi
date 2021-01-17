@@ -138,29 +138,60 @@ function partition(width, height, tiles, sortedLattice) {
   return pixels;
 }
 
+const findClosestTile = (pixelIndex, width, tiles) => {
+  const x = pixelIndex % width;
+  const y = (pixelIndex - x) / width;
+  let closestTileIndex;
+  let minDist = Infinity;
+  for (let i = 0; i < tiles.length; i++) {
+    const tile = tiles[i];
+    const dist = euclideanDist(x, y, tile.x, tile.y);
+    if (dist < minDist) {
+      minDist = dist;
+      closestTileIndex = i;
+    }
+  }
+  return closestTileIndex;
+};
+
 function render(tiles, pixels, canvas, sortedLattice) {
   const width = canvas.width;
   const height = canvas.height;
+  const getOrCalculatePixel = (pixelIndex) => {
+    const tileIndex = pixels[pixelIndex];
+    return tileIndex === undefined ?
+        pixels[pixelIndex] = findClosestTile(pixelIndex, width, tiles) :
+        tileIndex;
+  };
+  // render each row
   for (let y = 0; y < height; y++) {
     const rowOffset = width * y;
-    for (let x = 0; x < width; x++) {
-      // fill in un-partitioned pixels
-      // TODO: optimize
-      const pixelIndex = x + rowOffset;
-      if (pixels[pixelIndex] === undefined) {
-        let closestTileIndex;
-        let minDist = Infinity;
-        for (let i = 0; i < tiles.length; i++) {
-          const tile = tiles[i];
-          const dist = euclideanDist(x, y, tile.x, tile.y);
-          if (dist < minDist) {
-            minDist = dist;
-            closestTileIndex = i;
+    // fill in un-partitioned pixels: start at left, binary search for border
+    // with next color in this row, fill the pixels in between, repeat
+    // TODO: use the insight that cell borders don't change much from row to row
+    for (let left = rowOffset; left < width + rowOffset;) {
+      const tileIndex = getOrCalculatePixel(left);
+      let right = rowOffset + width - 1;
+      if (getOrCalculatePixel(right) !== tileIndex) {
+        // search for border
+        let step = Math.max((right - left) >> 1, 1);
+        do {
+          if (pixels[right] === tileIndex) {
+            right += step;
+          } else {
+            right -= step;
           }
-        }
-        pixels[pixelIndex] = closestTileIndex;
+          if (step > 1) {
+            step >>= 1;
+          }
+        } while (getOrCalculatePixel(right) !== tileIndex ||
+                 getOrCalculatePixel(right + 1) === tileIndex);
       }
-      canvas.setPixel(x, y, tiles[pixels[pixelIndex]].color);
+      for (let pixelIndex = left; pixelIndex <= right; pixelIndex++) {
+        pixels[pixelIndex] = tileIndex;
+        canvas.setPixel(pixelIndex, tiles[tileIndex].color);
+      }
+      left = right + 1;
     }
   }
   if (showCapitols) {
@@ -177,8 +208,9 @@ function drawCapitols(tiles, pixels, canvas, sortedLattice) {
     for (let i = 0; i < capitolArea; i += 2) {
       const capX = x + sortedLattice[i];
       const capY = y + sortedLattice[i + 1];
-      if (capY < height && pixels[capX + width * capY] === tileIndex) {
-        canvas.setPixel(capX, capY, capColor);
+      const pixelIndex = capX + width * capY;
+      if (capY < height && pixels[pixelIndex] === tileIndex) {
+        canvas.setPixel(pixelIndex, capColor);
       }
     }
   }
@@ -189,10 +221,11 @@ function renderAntialiasedBorders(tiles, pixels, canvas) {
   const height = canvas.height;
   if (bordersKnown) {
     for (let y = 0; y < height; y++) {
+      const rowOffset = width * y;
       for (let x = 0; x < width; x++) {
         const subpixels = borderPixels[y][x];
         if (subpixels !== undefined) {
-          canvas.setPixel(x, y, averageSubpixels(subpixels, tiles));
+          canvas.setPixel(x + rowOffset, averageSubpixels(subpixels, tiles));
         }
       }
     }
@@ -205,10 +238,11 @@ function renderAntialiasedBorders(tiles, pixels, canvas) {
         const nbrTileIndices = borderPixels[y][x];
         // if this is a border pixel, then sample subpixels
         if (nbrTileIndices !== undefined) {
+          const pixelIndex = x + width * y;
           const subpixels =
-              getSubpixelTileIndices(x, y, tiles, pixels[x + width * y], nbrTileIndices);
+              getSubpixelTileIndices(x, y, tiles, pixels[pixelIndex], nbrTileIndices);
           borderPixels[y][x] = subpixels;
-          canvas.setPixel(x, y, averageSubpixels(subpixels, tiles));
+          canvas.setPixel(pixelIndex, averageSubpixels(subpixels, tiles));
         }
       }
     }

@@ -7,6 +7,7 @@ export default class Canvas {
     this.ctx_.fillStyle = initialColor;
     this.ctx_.fillRect(0, 0, this.width, this.height);
     this.imageData_ = this.ctx_.getImageData(0, 0, this.width, this.height);
+    this.data_ = this.imageData_.data;
   }
 
   attachToDom() {
@@ -20,11 +21,11 @@ export default class Canvas {
     this.ctx_.putImageData(this.imageData_, 0, 0);
   }
 
-  setPixel(x, y, rgb) {
-    const red = 4 * (x + this.width * y);
-    this.imageData_.data[red] = rgb[0];
-    this.imageData_.data[red + 1] = rgb[1];
-    this.imageData_.data[red + 2] = rgb[2];
+  setPixel(pixelIndex, rgb) {
+    const red = pixelIndex << 2;
+    this.data_[red] = rgb[0];
+    this.data_[red + 1] = rgb[1];
+    this.data_[red + 2] = rgb[2];
   }
 
   addEventListener(...args) {
