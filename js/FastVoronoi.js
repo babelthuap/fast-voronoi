@@ -313,12 +313,12 @@ function calculateNbrTileIndices(height, width, pixels) {
   }
 }
 
-function getSubpixelTileIndices(x, y, tiles, pixelIndex, nbrTileIndices) {
-  const tile = tiles[pixelIndex];
+function getSubpixelTileIndices(x, y, tiles, tileIndex, nbrTileIndices) {
+  const tile = tiles[tileIndex];
   return SUBPIXEL_OFFSETS.map(([dx, dy]) => {
     const subpixelX = x + dx;
     const subpixelY = y + dy;
-    let closestTileIndex = pixelIndex;
+    let closestTileIndex = tileIndex;
     let minDist = euclideanDist(subpixelX, subpixelY, tile.x, tile.y);
     for (let i = 0; i < nbrTileIndices.length; i++) {
       const index = nbrTileIndices[i];
