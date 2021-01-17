@@ -6,6 +6,9 @@ const SUBPIXEL_OFFSETS = [
   [-1/3,  1/3], [0,  1/3], [1/3,  1/3],
 ];
 
+const NUM_COLORS = 256 ** 3;
+const MASK_8_BIT = 0xff;
+
 const urlParams = extractUrlParams();
 
 let antialias = urlParams.a !== 'false';
@@ -39,7 +42,7 @@ export default class FastVoronoi {
             this.sortedLattice_);
         render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
         this.canvas_.repaint();
-        console.log(`randomize: ${(performance.now() - start).toFixed(1)} ms`);
+        console.log(`randomize: ${(performance.now() - start).toFixed(0)} ms`);
 
         if (antialias) {
           const startAA = performance.now();
@@ -47,7 +50,7 @@ export default class FastVoronoi {
             renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
             this.canvas_.repaint();
             console.log(
-                `antialias: ${(performance.now() - startAA).toFixed(1)} ms`);
+                `antialias: ${(performance.now() - startAA).toFixed(0)} ms`);
             resolve();
           });
         } else {
@@ -70,7 +73,7 @@ export default class FastVoronoi {
       renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
     }
     this.canvas_.repaint();
-    console.log(`recolor: ${(performance.now() - start).toFixed(1)} ms`);
+    console.log(`recolor: ${(performance.now() - start).toFixed(0)} ms`);
   }
 
   toggleAA() {
@@ -82,7 +85,7 @@ export default class FastVoronoi {
       render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
     }
     this.canvas_.repaint();
-    console.log(`toggle AA: ${(performance.now() - start).toFixed(1)} ms`);
+    console.log(`toggle AA: ${(performance.now() - start).toFixed(0)} ms`);
   }
 
   toggleCapitols() {
@@ -91,14 +94,18 @@ export default class FastVoronoi {
     drawCapitols(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
     this.canvas_.repaint();
     console.log(
-        `toggle capitols: ${(performance.now() - start).toFixed(1)} ms`);
+        `toggle capitols: ${(performance.now() - start).toFixed(0)} ms`);
   }
 }
 
 function placeCapitols(width, height) {
   const tiles = new Array(numTiles);
+  // enforce distinct positions for each tile capitol
   const capitols = new Set();
+  // enforce distinct colors for each tile
+  const colors = new Set();
   for (let i = 0; i < numTiles; i++) {
+    // choose position
     let x = rand(width);
     let y = rand(height);
     while (capitols.has(pair(x, y))) {
@@ -106,7 +113,17 @@ function placeCapitols(width, height) {
       y = rand(height);
     }
     capitols.add(pair(x, y));
-    const color = new Uint8ClampedArray([rand(256), rand(256), rand(256)]);
+    // choose color
+    let colorInt = rand(NUM_COLORS);
+    while (colors.has(colorInt)) {
+      colorInt = rand(NUM_COLORS);
+    }
+    colors.add(colorInt);
+    const color = new Uint8ClampedArray([
+      colorInt >> 16,
+      (colorInt >> 8) & MASK_8_BIT,
+      colorInt & MASK_8_BIT,
+    ]);
     tiles[i] = {x, y, color};
   }
   return tiles;
@@ -138,6 +155,7 @@ function partition(width, height, tiles, sortedLattice) {
   return pixels;
 }
 
+// TODO: optimize by bucketing cell captiols
 const findClosestTile = (pixelIndex, width, tiles) => {
   const x = pixelIndex % width;
   const y = (pixelIndex - x) / width;
@@ -166,10 +184,11 @@ function render(tiles, pixels, canvas, sortedLattice) {
   // render each row
   for (let y = 0; y < height; y++) {
     const rowOffset = width * y;
+    const rowEnd = width + rowOffset;
     // fill in un-partitioned pixels: start at left, binary search for border
     // with next color in this row, fill the pixels in between, repeat
     // TODO: use the insight that cell borders don't change much from row to row
-    for (let left = rowOffset; left < width + rowOffset;) {
+    for (let left = rowOffset; left < rowEnd;) {
       const tileIndex = getOrCalculatePixel(left);
       let right = rowOffset + width - 1;
       if (getOrCalculatePixel(right) !== tileIndex) {
@@ -192,6 +211,11 @@ function render(tiles, pixels, canvas, sortedLattice) {
         canvas.setPixel(pixelIndex, tiles[tileIndex].color);
       }
       left = right + 1;
+      let knownTileIndex;
+      while ((knownTileIndex = pixels[left]) !== undefined && left < rowEnd) {
+        canvas.setPixel(left, tiles[knownTileIndex].color);
+        left++;
+      }
     }
   }
   if (showCapitols) {
