@@ -185,35 +185,37 @@ function render(tiles, pixels, canvas, sortedLattice) {
   for (let y = 0; y < height; y++) {
     const rowOffset = width * y;
     const rowEnd = width + rowOffset;
-    // fill in un-partitioned pixels: start at left, binary search for border
-    // with next color in this row, fill the pixels in between, repeat
     // TODO: use the insight that cell borders don't change much from row to row
-    for (let left = rowOffset; left < rowEnd;) {
-      const tileIndex = getOrCalculatePixel(left);
-      let right = rowOffset + width - 1;
-      if (getOrCalculatePixel(right) !== tileIndex) {
-        // search for border
-        let step = Math.max((right - left) >> 1, 1);
-        do {
-          if (pixels[right] === tileIndex) {
-            right += step;
-          } else {
-            right -= step;
-          }
-          if (step > 1) {
-            step >>= 1;
-          }
-        } while (getOrCalculatePixel(right) !== tileIndex ||
-                 getOrCalculatePixel(right + 1) === tileIndex);
-      }
-      for (let pixelIndex = left; pixelIndex <= right; pixelIndex++) {
-        pixels[pixelIndex] = tileIndex;
-        canvas.setPixel(pixelIndex, tiles[tileIndex].color);
-      }
-      left = right + 1;
-      let knownTileIndex;
-      while ((knownTileIndex = pixels[left]) !== undefined && left < rowEnd) {
-        canvas.setPixel(left, tiles[knownTileIndex].color);
+    for (let left = rowOffset; left < rowEnd; /* increment handled below */) {
+      let tileIndex = pixels[left];
+      if (tileIndex === undefined) {
+        // fill in un-partitioned pixels: starting at left, binary search for
+        // border with next color in this row, then fill the pixels in between
+        tileIndex = (pixels[left] = findClosestTile(left, width, tiles));
+        let right = rowOffset + width - 1;
+        if (getOrCalculatePixel(right) !== tileIndex) {
+          // search for border
+          let step = Math.max((right - left) >> 1, 1);
+          do {
+            if (pixels[right] === tileIndex) {
+              right += step;
+            } else {
+              right -= step;
+            }
+            if (step > 1) {
+              step >>= 1;
+            }
+          } while (getOrCalculatePixel(right) !== tileIndex ||
+                   getOrCalculatePixel(right + 1) === tileIndex);
+        }
+        for (let pixelIndex = left; pixelIndex <= right; pixelIndex++) {
+          pixels[pixelIndex] = tileIndex;
+          canvas.setPixel(pixelIndex, tiles[tileIndex].color);
+        }
+        left = right + 1;
+      } else {
+        // color in known pixels
+        canvas.setPixel(left, tiles[tileIndex].color);
         left++;
       }
     }
