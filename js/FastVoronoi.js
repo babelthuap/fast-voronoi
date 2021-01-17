@@ -199,7 +199,7 @@ function calculateBorderGuesses(width, height, numTiles) {
     return borderGuesses;
   }
   const expectedTilesPerRow =
-      Math.ceil(Math.sqrt(width * numTiles / height));
+      Math.floor(Math.sqrt(width * numTiles / height));
   borderGuesses = new Array(expectedTilesPerRow);
   for (let i = 0; i < expectedTilesPerRow; i++) {
     borderGuesses[i] = Math.round((i + 1) * width / expectedTilesPerRow) - 1;
@@ -211,7 +211,7 @@ function renderRow(
     y, borderGuesses, tiles, pixels, canvas, getOrCalculatePixel) {
   const width = canvas.width;
   const rowOffset = width * y;
-  const rowEnd = width + rowOffset;
+  const rowEnd = rowOffset + width;
   // TODO: use the insight that cell borders don't change much from row to row
   let left = rowOffset;
   let guessI = 0;
@@ -223,10 +223,15 @@ function renderRow(
       tileIndex = (pixels[left] = findClosestTile(left, width, tiles));
 
       // make an educated guess about where the next tile will be
-      let right = left + borderGuesses[guessI];
+      while (rowOffset + borderGuesses[guessI] <= left &&
+             guessI < borderGuesses.length - 1) {
+        guessI++;
+      }
+      let right = rowOffset + borderGuesses[guessI];
       while (getOrCalculatePixel(right) === tileIndex &&
-             guessI < borderGuesses.length) {
-        right = left + borderGuesses[++guessI];
+             guessI < borderGuesses.length - 1) {
+        guessI++;
+        right = rowOffset + borderGuesses[guessI];
       }
 
       // search for border
