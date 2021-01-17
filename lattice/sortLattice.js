@@ -47,7 +47,7 @@ for (let i = 0; i < sorted.length; i++) {
   flattened[2 * i + 1] = sorted[i][1];
 }
 const data = new Int8Array(flattened);
-fs.writeFile('sortedLattice', data, (err) => {
+fs.writeFile('sorted', data, (err) => {
   if (err) throw err;
   console.log('saved');
 });
