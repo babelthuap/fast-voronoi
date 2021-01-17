@@ -13,6 +13,9 @@ function init(arrayBuffer, canvas) {
   const sortedLattice = new Int8Array(arrayBuffer);
   const voronoi = new FastVoronoi(canvas, sortedLattice);
   canvas.attachToDom();
+  voronoi.firstRenderPromise.then(() => {
+    console.log(`first render: ${(performance.now()).toFixed(1)} ms`);
+  });
 
   let handlingMousedown = false;
   canvas.addEventListener('mousedown', ({layerX, layerY}) => {
