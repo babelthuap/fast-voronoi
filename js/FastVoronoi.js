@@ -178,17 +178,45 @@ function render(tiles, pixels, canvas, sortedLattice) {
   const width = canvas.width;
   const height = canvas.height;
   const borderGuesses = calculateBorderGuesses(width, height, tiles.length);
-  const getOrCalculatePixel = (pixelIndex) => {
+  const getOrCalculatePixelSimple = (pixelIndex) => {
     const tileIndex = pixels[pixelIndex];
     return tileIndex === undefined ?
         pixels[pixelIndex] = findClosestTile(pixelIndex, width, tiles) :
         tileIndex;
   };
+  const getOrCalculatePixelCheckConvexity = (pixelIndex) => {
+    let tileIndex = pixels[pixelIndex];
+    if (tileIndex === undefined) {
+      // if the up and down neighbors are the same, then this must be, too
+      const upTileIndex = pixels[pixelIndex - width];
+      if (upTileIndex === pixels[pixelIndex + width] /* downTileIndex */) {
+        return pixels[pixelIndex] = upTileIndex;
+      } else {
+        return pixels[pixelIndex] = findClosestTile(pixelIndex, width, tiles);
+      }
+    } else {
+      return tileIndex;
+    }
+  };
 
-  // render each row
-  for (let y = 0; y < height; y++) {
-    renderRow(y, borderGuesses, tiles, pixels, canvas, getOrCalculatePixel);
+  // render even rows
+  for (let y = 0; y < height; y += 2) {
+    renderRow(
+        y, borderGuesses, tiles, pixels, canvas, getOrCalculatePixelSimple);
   }
+  // render odd rows, taking advantage of convexity
+  for (let y = 1; y < height - 1; y += 2) {
+    renderRow(
+        y, borderGuesses, tiles, pixels, canvas,
+        getOrCalculatePixelCheckConvexity);
+  }
+  // if height is even, then bottom row is odd, so hasn't been rendered yet
+  if (height % 2 === 0) {
+    renderRow(
+        height - 1, borderGuesses, tiles, pixels, canvas,
+        getOrCalculatePixelSimple);
+  }
+
   if (showCapitols) {
     drawCapitols(tiles, pixels, canvas, sortedLattice);
   }
@@ -212,7 +240,6 @@ function renderRow(
   const width = canvas.width;
   const rowOffset = width * y;
   const rowEnd = rowOffset + width;
-  // TODO: use the insight that cell borders don't change much from row to row
   let left = rowOffset;
   let guessI = 0;
   while (left < rowEnd) {
@@ -220,7 +247,7 @@ function renderRow(
     if (tileIndex === undefined) {
       // fill in un-partitioned pixels: starting at left, search for the border
       // with next color in this row, then fill the pixels in between
-      tileIndex = (pixels[left] = findClosestTile(left, width, tiles));
+      tileIndex = getOrCalculatePixel(left);
 
       // make an educated guess about where the next tile will be
       while (rowOffset + borderGuesses[guessI] <= left &&
