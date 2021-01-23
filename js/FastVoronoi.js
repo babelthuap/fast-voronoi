@@ -9,12 +9,22 @@ const SUBPIXEL_OFFSETS = [
 const NUM_COLORS = 256 ** 3;
 const MASK_8_BIT = 0xff;
 
-const urlParams = extractUrlParams();
+const URL_PARAMS = extractUrlParams();
+const NUM_TILES = parseInt(URL_PARAMS.n) ||
+    Math.round(window.innerWidth * window.innerHeight / 3000);
+const WIDTH = window.innerWidth;
+const HEIGHT = window.innerHeight;
+const NUM_PIXELS = WIDTH * HEIGHT;
+const UNSET_ID = NUM_TILES < 0xff ? 0xff : 0xffff;
 
-let antialias = urlParams.a !== 'false';
-let showCapitols = urlParams.t === 'true';
+// reuse these across renders to reduce garbage collection time
+const pixels =
+    NUM_TILES < 0xff ? new Uint8Array(NUM_PIXELS) : new Uint16Array(NUM_PIXELS);
+const tiles = new Array(NUM_TILES);
+
+let antialias = URL_PARAMS.a !== 'false';
+let showCapitols = URL_PARAMS.t === 'true';
 let capitolArea;
-let numTiles;
 
 let borderGuesses;
 
@@ -23,40 +33,36 @@ let bordersKnown = false;
 
 export default class FastVoronoi {
   constructor(canvas, sortedLattice) {
-    numTiles = parseInt(urlParams.n) ||
-        Math.round(window.innerWidth * window.innerHeight / 3000);
     capitolArea = Math.min(
-        sortedLattice.length,
-        Math.ceil(canvas.width * canvas.height / (100 * numTiles)));
+        sortedLattice.length, Math.ceil(WIDTH * HEIGHT / (100 * NUM_TILES)));
     this.canvas_ = canvas;
     this.sortedLattice_ = sortedLattice;
-    this.firstRenderPromise = this.randomize(numTiles);
+    this.firstRenderPromise = this.randomize(NUM_TILES);
   }
 
-  randomize(numTiles) {
-    const start = performance.now();
-
+  randomize(NUM_TILES) {
     return new Promise(resolve => {
       requestAnimationFrame(() => {
-        this.tiles = placeCapitols(this.canvas_.width, this.canvas_.height);
-        this.pixels = partition(
-            this.canvas_.width, this.canvas_.height, this.tiles,
-            this.sortedLattice_);
-        render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
+        const start = performance.now();
+        placeCapitols();
+        partition(this.sortedLattice_);
+        render(this.canvas_, this.sortedLattice_);
         this.canvas_.repaint();
-        console.log(`randomize: ${(performance.now() - start).toFixed(0)} ms`);
+
+        const duration = performance.now() - start;
+        console.log(`randomize: ${duration.toFixed(0)} ms`);
 
         if (antialias) {
-          const startAA = performance.now();
           requestAnimationFrame(() => {
-            renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
+            const startAA = performance.now();
+            renderAntialiasedBorders(this.canvas_);
             this.canvas_.repaint();
-            console.log(
-                `antialias: ${(performance.now() - startAA).toFixed(0)} ms`);
-            resolve();
+            const durationAA = performance.now() - startAA;
+            console.log(`antialias: ${durationAA.toFixed(0)} ms`);
+            resolve(duration + durationAA);
           });
         } else {
-          resolve();
+          resolve(duration);
         }
       });
     });
@@ -64,15 +70,15 @@ export default class FastVoronoi {
 
   recolor() {
     const start = performance.now();
-    for (let i = 0; i < this.tiles.length; i++) {
-      const tile = this.tiles[i];
+    for (let i = 0; i < NUM_TILES; i++) {
+      const tile = tiles[i];
       tile.color[0] = rand(256);
       tile.color[1] = rand(256);
       tile.color[2] = rand(256);
     }
-    render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
+    render(this.canvas_, this.sortedLattice_);
     if (antialias) {
-      renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
+      renderAntialiasedBorders(this.canvas_);
     }
     this.canvas_.repaint();
     console.log(`recolor: ${(performance.now() - start).toFixed(0)} ms`);
@@ -82,9 +88,9 @@ export default class FastVoronoi {
     const start = performance.now();
     antialias = !antialias;
     if (antialias) {
-      renderAntialiasedBorders(this.tiles, this.pixels, this.canvas_);
+      renderAntialiasedBorders(this.canvas_);
     } else {
-      render(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
+      render(this.canvas_, this.sortedLattice_);
     }
     this.canvas_.repaint();
     console.log(`toggle AA: ${(performance.now() - start).toFixed(0)} ms`);
@@ -93,26 +99,25 @@ export default class FastVoronoi {
   toggleCapitols() {
     const start = performance.now();
     showCapitols = !showCapitols;
-    drawCapitols(this.tiles, this.pixels, this.canvas_, this.sortedLattice_);
+    drawCapitols(this.canvas_, this.sortedLattice_);
     this.canvas_.repaint();
     console.log(
         `toggle capitols: ${(performance.now() - start).toFixed(0)} ms`);
   }
 }
 
-function placeCapitols(width, height) {
-  const tiles = new Array(numTiles);
+function placeCapitols() {
   // enforce distinct positions for each tile capitol
   const capitols = new Set();
   // enforce distinct colors for each tile
   const colors = new Set();
-  for (let i = 0; i < numTiles; i++) {
+  for (let i = 0; i < NUM_TILES; i++) {
     // choose position
-    let x = rand(width);
-    let y = rand(height);
+    let x = rand(WIDTH);
+    let y = rand(HEIGHT);
     while (capitols.has(pair(x, y))) {
-      x = rand(width);
-      y = rand(height);
+      x = rand(WIDTH);
+      y = rand(HEIGHT);
     }
     capitols.add(pair(x, y));
     // choose color
@@ -131,23 +136,23 @@ function placeCapitols(width, height) {
   return tiles;
 }
 
-function partition(width, height, tiles, sortedLattice) {
+function partition(sortedLattice) {
   bordersKnown = false;
-  const pixels = new Array(width * height);
-  const thisSeemsToWork = 2.34 * (width + height) ** 2 / tiles.length;
+  pixels.fill(UNSET_ID);
+  const thisSeemsToWork = 2.34 * (WIDTH + HEIGHT) ** 2 / NUM_TILES;
   const expandArea = Math.min(thisSeemsToWork, sortedLattice.length);
   // partition by expanding circles
   for (let i = 0; i < expandArea; i += 2) {
     const dx = sortedLattice[i];
     const dy = sortedLattice[i + 1];
-    for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
+    for (let tileIndex = 0; tileIndex < NUM_TILES; tileIndex++) {
       const tile = tiles[tileIndex];
       const y = tile.y + dy;
-      if (y < height && y >= 0) {
+      if (y < HEIGHT && y >= 0) {
         const x = tile.x + dx;
-        if (x >= 0 && x < width) {
-          const pixelIndex = x + width * y;
-          if (pixels[pixelIndex] === undefined) {
+        if (x >= 0 && x < WIDTH) {
+          const pixelIndex = x + WIDTH * y;
+          if (pixels[pixelIndex] === UNSET_ID) {
             pixels[pixelIndex] = tileIndex;
           }
         }
@@ -158,12 +163,12 @@ function partition(width, height, tiles, sortedLattice) {
 }
 
 // TODO: optimize by bucketing cell captiols
-const findClosestTile = (pixelIndex, width, tiles) => {
-  const x = pixelIndex % width;
-  const y = (pixelIndex - x) / width;
+const findClosestTile = (pixelIndex, tiles) => {
+  const x = pixelIndex % WIDTH;
+  const y = (pixelIndex - x) / WIDTH;
   let closestTileIndex;
   let minDist = Infinity;
-  for (let i = 0; i < tiles.length; i++) {
+  for (let i = 0; i < NUM_TILES; i++) {
     const tile = tiles[i];
     const dist = euclideanDist(x, y, tile.x, tile.y);
     if (dist < minDist) {
@@ -174,25 +179,23 @@ const findClosestTile = (pixelIndex, width, tiles) => {
   return closestTileIndex;
 };
 
-function render(tiles, pixels, canvas, sortedLattice) {
-  const width = canvas.width;
-  const height = canvas.height;
-  const borderGuesses = calculateBorderGuesses(width, height, tiles.length);
+function render(canvas, sortedLattice) {
+  const borderGuesses = calculateBorderGuesses();
   const getOrCalculatePixelSimple = (pixelIndex) => {
     const tileIndex = pixels[pixelIndex];
-    return tileIndex === undefined ?
-        pixels[pixelIndex] = findClosestTile(pixelIndex, width, tiles) :
+    return tileIndex === UNSET_ID ?
+        pixels[pixelIndex] = findClosestTile(pixelIndex, tiles) :
         tileIndex;
   };
   const getOrCalculatePixelCheckConvexity = (pixelIndex) => {
     let tileIndex = pixels[pixelIndex];
-    if (tileIndex === undefined) {
+    if (tileIndex === UNSET_ID) {
       // if the up and down neighbors are the same, then this must be, too
-      const upTileIndex = pixels[pixelIndex - width];
-      if (upTileIndex === pixels[pixelIndex + width] /* downTileIndex */) {
+      const upTileIndex = pixels[pixelIndex - WIDTH];
+      if (upTileIndex === pixels[pixelIndex + WIDTH] /* downTileIndex */) {
         return pixels[pixelIndex] = upTileIndex;
       } else {
-        return pixels[pixelIndex] = findClosestTile(pixelIndex, width, tiles);
+        return pixels[pixelIndex] = findClosestTile(pixelIndex, tiles);
       }
     } else {
       return tileIndex;
@@ -200,51 +203,43 @@ function render(tiles, pixels, canvas, sortedLattice) {
   };
 
   // render even rows
-  for (let y = 0; y < height; y += 2) {
-    renderRow(
-        y, borderGuesses, tiles, pixels, canvas, getOrCalculatePixelSimple);
+  for (let y = 0; y < HEIGHT; y += 2) {
+    renderRow(y, borderGuesses, canvas, getOrCalculatePixelSimple);
   }
   // render odd rows, taking advantage of convexity
-  for (let y = 1; y < height - 1; y += 2) {
-    renderRow(
-        y, borderGuesses, tiles, pixels, canvas,
-        getOrCalculatePixelCheckConvexity);
+  for (let y = 1; y < HEIGHT - 1; y += 2) {
+    renderRow(y, borderGuesses, canvas, getOrCalculatePixelCheckConvexity);
   }
-  // if height is even, then bottom row is odd, so hasn't been rendered yet
-  if (height % 2 === 0) {
-    renderRow(
-        height - 1, borderGuesses, tiles, pixels, canvas,
-        getOrCalculatePixelSimple);
+  // if HEIGHT is even, then bottom row is odd, so hasn't been rendered yet
+  if (HEIGHT % 2 === 0) {
+    renderRow(HEIGHT - 1, borderGuesses, canvas, getOrCalculatePixelSimple);
   }
 
   if (showCapitols) {
-    drawCapitols(tiles, pixels, canvas, sortedLattice);
+    drawCapitols(canvas, sortedLattice);
   }
 }
 
-function calculateBorderGuesses(width, height, numTiles) {
+function calculateBorderGuesses() {
   if (borderGuesses !== undefined) {
     return borderGuesses;
   }
-  const expectedTilesPerRow =
-      Math.floor(Math.sqrt(width * numTiles / height));
+  const expectedTilesPerRow = Math.floor(Math.sqrt(WIDTH * NUM_TILES / HEIGHT));
   borderGuesses = new Array(expectedTilesPerRow);
   for (let i = 0; i < expectedTilesPerRow; i++) {
-    borderGuesses[i] = Math.round((i + 1) * width / expectedTilesPerRow) - 1;
+    borderGuesses[i] = Math.round((i + 1) * WIDTH / expectedTilesPerRow) - 1;
   }
   return borderGuesses;
 }
 
-function renderRow(
-    y, borderGuesses, tiles, pixels, canvas, getOrCalculatePixel) {
-  const width = canvas.width;
-  const rowOffset = width * y;
-  const rowEnd = rowOffset + width;
+function renderRow(y, borderGuesses, canvas, getOrCalculatePixel) {
+  const rowOffset = WIDTH * y;
+  const rowEnd = rowOffset + WIDTH;
   let left = rowOffset;
   let guessI = 0;
   while (left < rowEnd) {
     let tileIndex = pixels[left];
-    if (tileIndex === undefined) {
+    if (tileIndex === UNSET_ID) {
       // fill in un-partitioned pixels: starting at left, search for the border
       // with next color in this row, then fill the pixels in between
       tileIndex = getOrCalculatePixel(left);
@@ -293,30 +288,26 @@ function renderRow(
   }
 }
 
-function drawCapitols(tiles, pixels, canvas, sortedLattice) {
-  const width = canvas.width;
-  const height = canvas.height;
-  for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
+function drawCapitols(canvas, sortedLattice) {
+  for (let tileIndex = 0; tileIndex < NUM_TILES; tileIndex++) {
     const {x, y, color} = tiles[tileIndex];
     const capColor = showCapitols ? color.map(c => (c + 128) % 256) : color;
     for (let i = 0; i < capitolArea; i += 2) {
       const capX = x + sortedLattice[i];
       const capY = y + sortedLattice[i + 1];
-      const pixelIndex = capX + width * capY;
-      if (capY < height && pixels[pixelIndex] === tileIndex) {
+      const pixelIndex = capX + WIDTH * capY;
+      if (capY < HEIGHT && pixels[pixelIndex] === tileIndex) {
         canvas.setPixel(pixelIndex, capColor);
       }
     }
   }
 }
 
-function renderAntialiasedBorders(tiles, pixels, canvas) {
-  const width = canvas.width;
-  const height = canvas.height;
+function renderAntialiasedBorders(canvas) {
   if (bordersKnown) {
-    for (let y = 0; y < height; y++) {
-      const rowOffset = width * y;
-      for (let x = 0; x < width; x++) {
+    for (let y = 0; y < HEIGHT; y++) {
+      const rowOffset = WIDTH * y;
+      for (let x = 0; x < WIDTH; x++) {
         const subpixels = borderPixels[y][x];
         if (subpixels !== undefined) {
           canvas.setPixel(x + rowOffset, averageSubpixels(subpixels, tiles));
@@ -325,16 +316,16 @@ function renderAntialiasedBorders(tiles, pixels, canvas) {
     }
   } else {
     // borders unknown - so we must calculate them
-    calculateNbrTileIndices(height, width, pixels);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
+    calculateNbrTileIndices(pixels);
+    for (let y = 0; y < HEIGHT; y++) {
+      for (let x = 0; x < WIDTH; x++) {
         // determine the tiles to which each neighbor pixel belongs
         const nbrTileIndices = borderPixels[y][x];
         // if this is a border pixel, then sample subpixels
         if (nbrTileIndices !== undefined) {
-          const pixelIndex = x + width * y;
-          const subpixels =
-              getSubpixelTileIndices(x, y, tiles, pixels[pixelIndex], nbrTileIndices);
+          const pixelIndex = x + WIDTH * y;
+          const subpixels = getSubpixelTileIndices(
+              x, y, tiles, pixels[pixelIndex], nbrTileIndices);
           borderPixels[y][x] = subpixels;
           canvas.setPixel(pixelIndex, averageSubpixels(subpixels, tiles));
         }
@@ -352,28 +343,28 @@ const add = (arr, e) => {
   return arr;
 };
 
-function calculateNbrTileIndices(height, width, pixels) {
+function calculateNbrTileIndices(pixels) {
   if (borderPixels === undefined) {
-    borderPixels = new Array(height);
+    borderPixels = new Array(HEIGHT);
   }
-  const widthMinusOne = width - 1;
-  for (let y = 0; y < height; y++) {
-    const row = borderPixels[y] = new Array(width);
+  const widthMinusOne = WIDTH - 1;
+  for (let y = 0; y < HEIGHT; y++) {
+    const row = borderPixels[y] = new Array(WIDTH);
     for (let x = 0; x < widthMinusOne; x++) {
-      const pixelIndex = x + width * y;
+      const pixelIndex = x + WIDTH * y;
       if (pixels[pixelIndex] !== pixels[pixelIndex + 1]) {
         row[x] = add(row[x] || [], pixels[pixelIndex + 1]);
         row[x + 1] = [pixels[pixelIndex]];
       }
     }
   }
-  const heightMinusOne = height - 1;
-  for (let x = 0; x < width; x++) {
+  const heightMinusOne = HEIGHT - 1;
+  for (let x = 0; x < WIDTH; x++) {
     for (let y = 0; y < heightMinusOne; y++) {
-      const pixelIndex = x + width * y;
-      if (pixels[pixelIndex] !== pixels[pixelIndex + width]) {
+      const pixelIndex = x + WIDTH * y;
+      if (pixels[pixelIndex] !== pixels[pixelIndex + WIDTH]) {
         borderPixels[y][x] =
-            add(borderPixels[y][x] || [], pixels[pixelIndex + width]);
+            add(borderPixels[y][x] || [], pixels[pixelIndex + WIDTH]);
         borderPixels[y + 1][x] =
             add(borderPixels[y + 1][x] || [], pixels[pixelIndex]);
       }
