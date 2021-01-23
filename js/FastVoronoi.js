@@ -16,7 +16,6 @@ const WIDTH = window.innerWidth;
 const HEIGHT = window.innerHeight;
 const NUM_PIXELS = WIDTH * HEIGHT;
 const UNSET_ID = NUM_TILES < 0xff ? 0xff : 0xffff;
-const IMAGE_URL = URL_PARAMS.get('url');
 
 // reuse these across renders to reduce garbage collection time
 const pixels =
@@ -38,18 +37,17 @@ export default class FastVoronoi {
         sortedLattice.length, Math.ceil(WIDTH * HEIGHT / (100 * NUM_TILES)));
     this.canvas_ = canvas;
     this.sortedLattice_ = sortedLattice;
-    this.firstRenderPromise = this.randomize(NUM_TILES);
   }
 
-  randomize(NUM_TILES) {
+  randomize(imageUrl) {
     const start = performance.now();
     return new Promise(resolve => {
       requestAnimationFrame(() => {
         placeCapitols();
         partition(this.sortedLattice_);
         render(this.canvas_, this.sortedLattice_);
-        if (IMAGE_URL) {
-          this.renderImage(IMAGE_URL).then(() => {
+        if (imageUrl) {
+          this.renderImage(imageUrl).then(() => {
             if (antialias) {
               renderAntialiasedBorders(this.canvas_);
             }
