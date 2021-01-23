@@ -13,17 +13,27 @@ function init(arrayBuffer, canvas) {
   const sortedLattice = new Int8Array(arrayBuffer);
   const voronoi = new FastVoronoi(canvas, sortedLattice);
   canvas.attachToDom();
-  voronoi.firstRenderPromise.then(() => {
+  voronoi.randomize().then(() => {
     console.log(`first render: ${(performance.now()).toFixed(0)} ms`);
   });
 
-  let handlingMousedown = false;
-  canvas.addEventListener('mousedown', ({layerX, layerY}) => {
-    if (handlingMousedown) {
+  let imageUrl = null;
+  let rendering = false;
+  const render = () => {
+    if (rendering) {
       return;
     }
-    handlingMousedown = true;
-    voronoi.randomize().then(() => handlingMousedown = false);
+    rendering = true;
+    voronoi.randomize(imageUrl).then(() => rendering = false);
+  };
+
+  canvas.addEventListener('mousedown', render);
+
+  document.getElementById('upload').addEventListener('change', function() {
+    if (this.files && this.files[0]) {
+      imageUrl = URL.createObjectURL(this.files[0]);
+      render();
+    }
   });
 
   let handlingKeypress = false;
@@ -46,7 +56,7 @@ function init(arrayBuffer, canvas) {
 
   setTimeout(() => {
     if (!window.matchMedia('only screen and (max-width: 760px)').matches &&
-        extractUrlParams()['controls'] !== 'false') {
+        extractUrlParams()['controls'] === 'true') {
       alert(`Controls:
       a = toggle antialiasing
       c = recolor
