@@ -1,4 +1,4 @@
-import {averageSubpixels, euclideanDist, extractUrlParams, pair, rand} from './util.js';
+import {averageSubpixels, euclideanDist, pair, rand} from './util.js';
 
 const SUBPIXEL_OFFSETS = [
   [-1/3, -1/3], [0, -1/3], [1/3, -1/3],
@@ -9,21 +9,22 @@ const SUBPIXEL_OFFSETS = [
 const NUM_COLORS = 256 ** 3;
 const MASK_8_BIT = 0xff;
 
-const URL_PARAMS = extractUrlParams();
-const NUM_TILES = parseInt(URL_PARAMS.n) ||
+const URL_PARAMS = new URLSearchParams(window.location.search);
+const NUM_TILES = parseInt(URL_PARAMS.get('n')) ||
     Math.round(window.innerWidth * window.innerHeight / 3000);
 const WIDTH = window.innerWidth;
 const HEIGHT = window.innerHeight;
 const NUM_PIXELS = WIDTH * HEIGHT;
 const UNSET_ID = NUM_TILES < 0xff ? 0xff : 0xffff;
+const IMAGE_URL = URL_PARAMS.get('url');
 
 // reuse these across renders to reduce garbage collection time
 const pixels =
     NUM_TILES < 0xff ? new Uint8Array(NUM_PIXELS) : new Uint16Array(NUM_PIXELS);
 const tiles = new Array(NUM_TILES);
 
-let antialias = URL_PARAMS.a !== 'false';
-let showCapitols = URL_PARAMS.t === 'true';
+let antialias = URL_PARAMS.get('a') !== 'false';
+let showCapitols = URL_PARAMS.get('t') === 'true';
 let capitolArea;
 
 let borderGuesses;
@@ -41,27 +42,35 @@ export default class FastVoronoi {
   }
 
   randomize(NUM_TILES) {
+    const start = performance.now();
     return new Promise(resolve => {
       requestAnimationFrame(() => {
-        const start = performance.now();
         placeCapitols();
         partition(this.sortedLattice_);
         render(this.canvas_, this.sortedLattice_);
-        this.canvas_.repaint();
-
-        const duration = performance.now() - start;
-        console.log(`randomize: ${duration.toFixed(0)} ms`);
-
-        if (antialias) {
+        if (IMAGE_URL) {
+          this.renderImage(IMAGE_URL).then(() => {
+            if (antialias) {
+              renderAntialiasedBorders(this.canvas_);
+            }
+            this.canvas_.repaint();
+            const duration = performance.now() - start;
+            console.log(`renderImage: ${duration.toFixed(0)} ms`);
+            resolve(duration);
+          });
+        } else if (antialias) {
+          this.canvas_.repaint();
           requestAnimationFrame(() => {
-            const startAA = performance.now();
             renderAntialiasedBorders(this.canvas_);
             this.canvas_.repaint();
-            const durationAA = performance.now() - startAA;
-            console.log(`antialias: ${durationAA.toFixed(0)} ms`);
-            resolve(duration + durationAA);
+            const duration = performance.now() - start;
+            console.log(`randomize + AA: ${duration.toFixed(0)} ms`);
+            resolve(duration);
           });
         } else {
+          this.canvas_.repaint();
+          const duration = performance.now() - start;
+          console.log(`randomize: ${duration.toFixed(0)} ms`);
           resolve(duration);
         }
       });
@@ -82,6 +91,51 @@ export default class FastVoronoi {
     }
     this.canvas_.repaint();
     console.log(`recolor: ${(performance.now() - start).toFixed(0)} ms`);
+  }
+
+  renderImage(url) {
+    return new Promise(resolve => {
+      const imageCanvas = document.createElement('canvas');
+      imageCanvas.width = WIDTH;
+      imageCanvas.height = HEIGHT;
+      const image = new Image();
+      image.crossOrigin = 'Anonymous';
+      image.src = url;
+      image.addEventListener('load', () => {
+        // stretch image onto a full-window canvas
+        const ctx = imageCanvas.getContext('2d');
+        ctx.drawImage(
+            image,
+            /* source: */ 0, 0, image.width, image.height,
+            /* destination: */ 0, 0, WIDTH, HEIGHT);
+        const imgPixelData = ctx.getImageData(0, 0, WIDTH, HEIGHT).data;
+
+        // determine new tile colors
+        const newTileColors = tiles.map(tile => {
+          return {count: 0, rgb: new Uint32Array(3)};
+        });
+        for (let pixelIndex = 0; pixelIndex < NUM_PIXELS; ++pixelIndex) {
+          const tileIndex = pixels[pixelIndex];
+          const newColor = newTileColors[tileIndex];
+          newColor.count += 1;
+          const imgR = pixelIndex << 2;
+          newColor.rgb[0] += imgPixelData[imgR];
+          newColor.rgb[1] += imgPixelData[imgR + 1];
+          newColor.rgb[2] += imgPixelData[imgR + 2];
+        }
+
+        // recolor
+        for (let tileIndex = 0; tileIndex < NUM_TILES; tileIndex++) {
+          const tile = tiles[tileIndex];
+          const newColor = newTileColors[tileIndex];
+          tile.color[0] = newColor.rgb[0] / newColor.count;
+          tile.color[1] = newColor.rgb[1] / newColor.count;
+          tile.color[2] = newColor.rgb[2] / newColor.count;
+        }
+        render(this.canvas_, this.sortedLattice_);
+        resolve();
+      });
+    });
   }
 
   toggleAA() {
