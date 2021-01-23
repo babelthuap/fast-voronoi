@@ -11,9 +11,10 @@ export default class Canvas {
   }
 
   attachToDom() {
-    if (document.body.children[0] !== this.root_) {
-      [...document.body.children].forEach(child => child.remove());
-      document.body.appendChild(this.root_);
+    const container = document.getElementById('canvas');
+    if (container.children[0] !== this.root_) {
+      [...container.children].forEach(child => child.remove());
+      container.appendChild(this.root_);
     }
   }
 
